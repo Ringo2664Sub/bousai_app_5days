@@ -4,31 +4,620 @@
   <meta charset="utf-8">
   <title>{% block title %}防災アプリ{% endblock %}</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    :root {
+      color-scheme: light;
+      --blue: #285ca8;
+      --ink: #27384b;
+      --muted: #64748b;
+      --line: #e7edf3;
+      --green: #209653;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      background: #f5f7f9;
+      color: var(--ink);
+      font-family: "Noto Sans JP", "Yu Gothic", Meiryo, sans-serif;
+    }
+
+    .site-header {
+      position: relative;
+      z-index: 1000;
+      background: var(--blue);
+      box-shadow: 0 2px 8px rgb(23 48 82 / 14%);
+    }
+
+    .header-inner {
+      width: min(100% - 40px, 1390px);
+      height: 70px;
+      margin: 0 auto;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 24px;
+    }
+
+    .site-brand {
+      color: #fff;
+      font-size: 23px;
+      font-weight: 700;
+      text-decoration: none;
+    }
+
+    .menu-toggle {
+      width: 42px;
+      height: 42px;
+      padding: 10px;
+      border: 0;
+      border-radius: 4px;
+      background: transparent;
+      display: none;
+      align-content: center;
+      gap: 5px;
+      cursor: pointer;
+    }
+
+    .menu-toggle:hover,
+    .menu-toggle:focus-visible { background: rgb(255 255 255 / 14%); }
+    .menu-toggle span { height: 2px; background: #fff; width: 22px; transition: transform .18s ease, opacity .18s ease; }
+    .menu-toggle[aria-expanded="true"] span:first-child { transform: translateY(7px) rotate(45deg); }
+    .menu-toggle[aria-expanded="true"] span:nth-child(2) { opacity: 0; }
+    .menu-toggle[aria-expanded="true"] span:last-child { transform: translateY(-7px) rotate(-45deg); }
+
+    .site-nav { display: flex; align-items: center; gap: 4px; }
+    .site-nav a, .site-nav .session-status {
+      padding: 10px;
+      color: #fff;
+      font-size: 14px;
+      text-decoration: none;
+      white-space: nowrap;
+    }
+    .site-nav a { border-radius: 4px; }
+    .site-nav a:hover, .site-nav a[aria-current="page"] { background: rgb(255 255 255 / 16%); color: #fff; }
+    .site-nav a:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+    .site-nav .session-status { padding-inline: 8px; color: rgb(255 255 255 / 78%); font-size: 12px; }
+
+    main {
+      width: min(100% - 40px, 910px);
+      margin: 32px auto 56px;
+    }
+
+    .home-dashboard { display: grid; gap: 32px; }
+    .home-panel {
+      padding: 26px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+      box-shadow: 0 8px 24px rgb(34 57 82 / 5%);
+    }
+    .notice-count {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 28px;
+      height: 24px;
+      padding: 0 7px;
+      border-radius: 12px;
+      background: #eaf2fc;
+      color: var(--blue);
+      font-size: 12px;
+      font-weight: 700;
+    }
+    .notice-board-link {
+      flex: 0 0 auto;
+      color: var(--blue);
+      font-size: 14px;
+      font-weight: 700;
+      text-decoration: none;
+    }
+    .notice-board-link:hover { text-decoration: underline; }
+    .notice-board-link:focus-visible { outline: 2px solid var(--blue); outline-offset: 3px; }
+    .resident-notice-list { display: grid; gap: 12px; }
+    .resident-notice {
+      padding: 16px 18px;
+      border: 1px solid var(--line);
+      border-left: 4px solid #3478c8;
+      border-radius: 6px;
+      background: #f8fafc;
+    }
+    .resident-notice[data-priority="緊急"],
+    .resident-notice[data-priority="高"],
+    .resident-notice[data-priority="critical"],
+    .resident-notice[data-priority="urgent"] {
+      border-left-color: #b42318;
+      background: #fff7f6;
+    }
+    .resident-notice-topline {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 9px;
+    }
+    .notice-priority {
+      display: inline-flex;
+      align-items: center;
+      min-height: 23px;
+      padding: 2px 8px;
+      border-radius: 4px;
+      background: #eaf2fc;
+      color: #285ca8;
+      font-size: 12px;
+      font-weight: 700;
+    }
+    .resident-notice[data-priority="緊急"] .notice-priority,
+    .resident-notice[data-priority="高"] .notice-priority,
+    .resident-notice[data-priority="critical"] .notice-priority,
+    .resident-notice[data-priority="urgent"] .notice-priority {
+      background: #fde8e7;
+      color: #a51d18;
+    }
+    .resident-notice-tags { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; }
+    .notice-status, .notice-district, .notice-recipient {
+      display: inline-flex;
+      align-items: center;
+      min-height: 23px;
+      padding: 2px 8px;
+      border-radius: 4px;
+      background: #eef2f6;
+      color: #475569;
+      font-size: 12px;
+      font-weight: 700;
+    }
+    .notice-recipient { background: #eaf2fc; color: #285ca8; }
+    .notice-status--未対応 { background: #fff2d8; color: #8a5100; }
+    .notice-status--対応中 { background: #eaf2fc; color: #285ca8; }
+    .notice-status--完了 { background: #eaf6ef; color: #17643d; }
+    .notice-district { background: #f1f4f7; color: #526174; font-weight: 500; }
+    .notice-date { color: var(--muted); font-size: 12px; }
+    .notice-message { margin: 0; color: var(--ink); font-size: 16px; font-weight: 700; line-height: 1.65; white-space: pre-line; }
+    .notice-shelter { margin: 8px 0 0; color: var(--muted); font-size: 14px; }
+    .notice-empty { display: flex; align-items: center; gap: 12px; padding: 18px; border-radius: 6px; background: #f4f6f7; color: var(--muted); }
+    .notice-empty svg { width: 22px; height: 22px; flex: 0 0 auto; color: var(--green); }
+    .notice-empty p { margin: 0; }
+    .panel-heading {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      margin-bottom: 20px;
+    }
+    .panel-heading h2 {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin: 0;
+      color: var(--blue);
+      font-size: 21px;
+      font-weight: 700;
+    }
+    .heading-icon { width: 24px; height: 24px; flex: 0 0 auto; }
+    .map-toolbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      margin: -4px 0 14px;
+    }
+    .map-toolbar p { margin: 0; color: var(--muted); font-size: 14px; }
+    .locate-button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      min-height: 40px;
+      padding: 8px 13px;
+      border: 1px solid #c9d8eb;
+      border-radius: 5px;
+      background: #fff;
+      color: var(--blue);
+      font: inherit;
+      font-size: 14px;
+      font-weight: 700;
+      white-space: nowrap;
+      cursor: pointer;
+    }
+    .locate-button:hover { background: #f0f5fb; }
+    .locate-button:focus-visible { outline: 3px solid rgb(40 92 168 / 28%); outline-offset: 2px; }
+    .locate-button:disabled { opacity: .6; cursor: wait; }
+    .locate-button svg { width: 18px; height: 18px; }
+    .map-frame { position: relative; }
+    #shelterMap {
+      height: 410px;
+      overflow: hidden;
+      border-radius: 8px;
+      background: #dcebf0;
+    }
+    .shelter-marker-shell { border: 0; background: transparent; }
+    .map-pin {
+      position: relative;
+      display: block;
+      width: 27px;
+      height: 27px;
+      border: 2px solid #fff;
+      border-radius: 50% 50% 50% 0;
+      background: #d78b18;
+      box-shadow: 0 2px 6px rgb(20 36 54 / 38%);
+      transform: rotate(-45deg);
+    }
+    .map-pin::after {
+      position: absolute;
+      top: 7px;
+      left: 7px;
+      width: 9px;
+      height: 9px;
+      border-radius: 50%;
+      background: #fff;
+      content: "";
+    }
+    .map-pin--open { background: #198754; }
+    .map-pin--closed { background: #64748b; }
+    .map-user-marker { filter: drop-shadow(0 1px 4px rgb(20 36 54 / 45%)); }
+    .map-location-message { min-height: 22px; margin: 11px 0 0; color: var(--muted); font-size: 13px; }
+    .popup-status { margin: 7px 0 0; color: #9a5800; font-weight: 700; }
+    .popup-status--open { color: #147344; }
+    .popup-status--closed { color: #526174; }
+    .shelter-legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px 20px;
+      margin: 16px 0 0;
+      padding: 0;
+      list-style: none;
+    }
+    .shelter-legend li { display: flex; align-items: center; gap: 8px; color: var(--ink); font-size: 13px; }
+    .legend-dot { width: 12px; height: 12px; border-radius: 50%; background: #198754; }
+    .legend-dot--closed { background: #64748b; }
+    .legend-dot--unknown { background: #d78b18; }
+    .legend-dot--user { border: 2px solid #fff; background: #2374d8; box-shadow: 0 0 0 1px #2374d8; }
+    .auto-refresh {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--green);
+      font-size: 14px;
+      white-space: nowrap;
+    }
+    .refresh-symbol { font-size: 20px; font-weight: 700; line-height: 1; }
+    .weather-content {
+      min-height: 136px;
+      padding: 16px 18px;
+      border-radius: 8px;
+      background: #f4f6f7;
+    }
+    .weather-location, .weather-status, .weather-meta {
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      margin: 0 0 12px;
+    }
+    .weather-location { font-size: 16px; }
+    .weather-status { color: var(--green); font-weight: 700; }
+    .weather-status.has-warning { color: #b45309; }
+    .weather-meta { margin-bottom: 8px; color: var(--muted); font-size: 14px; }
+    .weather-meta:last-child { margin-bottom: 0; }
+    .weather-symbol { width: 19px; text-align: center; flex: 0 0 auto; }
+    .warning-list { margin: -2px 0 12px 28px; padding-left: 14px; }
+    .loading-message, .error-message { margin: 0; color: var(--muted); }
+    .disaster-tools { display: flex; align-items: center; gap: 12px; }
+    .refresh-button {
+      display: grid;
+      place-items: center;
+      width: 38px;
+      height: 38px;
+      padding: 0;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #fff;
+      color: var(--blue);
+      cursor: pointer;
+    }
+    .refresh-button:hover { background: #f0f5fb; }
+    .refresh-button:focus-visible, .disaster-filter:focus-visible {
+      outline: 3px solid rgb(40 92 168 / 28%);
+      outline-offset: 2px;
+    }
+    .refresh-button:disabled { opacity: .55; cursor: wait; }
+    .refresh-button svg { width: 19px; height: 19px; }
+    .refresh-button.is-loading svg { animation: refresh-spin .8s linear infinite; }
+    @keyframes refresh-spin { to { transform: rotate(360deg); } }
+    .disaster-toolbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      margin: -2px 0 16px;
+    }
+    .disaster-filter-label { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 14px; }
+    .disaster-filter {
+      min-width: 150px;
+      min-height: 38px;
+      padding: 6px 32px 6px 10px;
+      border: 1px solid var(--line);
+      border-radius: 5px;
+      background: #fff;
+      color: var(--ink);
+      font: inherit;
+    }
+    .feed-status { margin: 0; color: var(--muted); font-size: 13px; text-align: right; }
+    .feed-status.is-error, .error-message { color: #b42318; }
+    .feed-status.is-loading { color: var(--blue); }
+    .disaster-feed { display: grid; gap: 10px; }
+    .disaster-item {
+      display: grid;
+      grid-template-columns: 42px minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 14px;
+      padding: 15px 16px;
+      border: 1px solid var(--line);
+      border-left: 4px solid #d78b18;
+      border-radius: 6px;
+      background: #fff;
+    }
+    .disaster-item[data-category="特別警報"] { border-left-color: #b42318; }
+    .disaster-item[data-category="注意報"] { border-left-color: #3478c8; }
+    .disaster-icon {
+      display: grid;
+      place-items: center;
+      width: 38px;
+      height: 38px;
+      border-radius: 50%;
+      background: #fff2d8;
+      color: #9a5800;
+      font-size: 18px;
+      font-weight: 800;
+    }
+    .disaster-item[data-category="特別警報"] .disaster-icon { background: #fde8e7; color: #b42318; }
+    .disaster-item[data-category="注意報"] .disaster-icon { background: #eaf2fc; color: #285ca8; }
+    .disaster-copy { min-width: 0; }
+    .disaster-copy h3 { margin: 0 0 5px; color: var(--ink); font-size: 16px; font-weight: 700; }
+    .disaster-detail { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; color: var(--muted); font-size: 13px; }
+    .disaster-category, .disaster-status {
+      display: inline-flex;
+      align-items: center;
+      min-height: 23px;
+      padding: 2px 8px;
+      border-radius: 4px;
+      background: #fff2d8;
+      color: #8a5100;
+      font-size: 12px;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+    .disaster-item[data-category="特別警報"] .disaster-category { background: #fde8e7; color: #a51d18; }
+    .disaster-item[data-category="注意報"] .disaster-category { background: #eaf2fc; color: #285ca8; }
+    .disaster-status { background: #eef2f6; color: #475569; }
+    .disaster-time { color: var(--muted); font-size: 12px; white-space: nowrap; }
+    .feed-empty {
+      display: grid;
+      justify-items: center;
+      gap: 8px;
+      padding: 28px 16px;
+      color: var(--muted);
+      text-align: center;
+    }
+    .feed-empty-icon { color: var(--green); font-size: 26px; line-height: 1; }
+    .feed-empty p { margin: 0; }
+    .data-source { margin: 14px 0 0; color: var(--muted); font-size: 12px; }
+    .board-page { display: grid; gap: 22px; }
+    .board-page-heading h1 { margin: 0 0 6px; color: var(--ink); font-size: 25px; }
+    .board-page-heading p { margin: 0; color: var(--muted); }
+    .board-section-heading { margin-bottom: 18px; }
+    .board-section-heading h2 { color: var(--ink); font-size: 19px; }
+    .board-feedback { margin: 0; padding: 12px 14px; border-radius: 6px; font-size: 14px; }
+    .board-feedback--success { background: #eaf6ef; color: #17643d; }
+    .board-feedback--error { background: #fff0ef; color: #a51d18; }
+    .instruction-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px 20px; }
+    .instruction-field { display: grid; align-content: start; gap: 7px; min-width: 0; color: var(--ink); font-size: 14px; font-weight: 700; }
+    .instruction-field--wide { grid-column: 1 / -1; }
+    .instruction-field textarea, .instruction-field select, .status-update-form select {
+      width: 100%;
+      min-height: 42px;
+      padding: 9px 11px;
+      border: 1px solid #cbd5e1;
+      border-radius: 5px;
+      background: #fff;
+      color: var(--ink);
+      font: inherit;
+      font-weight: 400;
+    }
+    .instruction-field textarea { min-height: 104px; resize: vertical; line-height: 1.6; }
+    .instruction-field textarea:focus, .instruction-field select:focus, .status-update-form select:focus {
+      outline: 3px solid rgb(40 92 168 / 20%);
+      border-color: var(--blue);
+    }
+    .required-mark { margin-left: 5px; color: #b42318; font-size: 11px; }
+    .field-note { color: var(--muted); font-size: 12px; font-weight: 400; }
+    .field-help-text { color: var(--muted); font-size: 12px; font-weight: 400; }
+    .priority-field { min-width: 0; margin: 0; padding: 0; border: 0; }
+    .priority-field legend { margin-bottom: 8px; color: var(--ink); font-size: 14px; font-weight: 700; }
+    .priority-options { display: flex; gap: 9px; }
+    .priority-option { position: relative; min-width: 86px; cursor: pointer; }
+    .priority-option input { position: absolute; width: 1px; height: 1px; opacity: 0; }
+    .priority-option span {
+      display: grid;
+      place-items: center;
+      min-height: 39px;
+      padding: 6px 15px;
+      border: 1px solid #cbd5e1;
+      border-radius: 5px;
+      background: #fff;
+      color: var(--ink);
+      font-size: 14px;
+      font-weight: 700;
+    }
+    .priority-option input:checked + span { border-color: var(--blue); background: #eaf2fc; color: var(--blue); }
+    .priority-option--高 input:checked + span { border-color: #b42318; background: #fde8e7; color: #a51d18; }
+    .priority-option input:focus-visible + span { outline: 3px solid rgb(40 92 168 / 25%); outline-offset: 2px; }
+    .registration-time-field p { margin: 0; padding: 11px 12px; border-radius: 5px; background: #f4f6f7; color: var(--muted); font-size: 13px; font-weight: 400; }
+    .instruction-form-actions { display: flex; align-items: end; justify-content: flex-end; }
+    .primary-action, .secondary-action {
+      min-height: 42px;
+      padding: 9px 18px;
+      border: 1px solid var(--blue);
+      border-radius: 5px;
+      background: var(--blue);
+      color: #fff;
+      font: inherit;
+      font-size: 14px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    .primary-action:hover { background: #204b8a; }
+    .secondary-action { min-height: 38px; padding: 7px 12px; background: #fff; color: var(--blue); }
+    .secondary-action:hover { background: #f0f5fb; }
+    .instruction-list { display: grid; gap: 12px; }
+    .instruction-record { padding: 16px 18px; border: 1px solid var(--line); border-radius: 6px; background: #fff; }
+    .instruction-record[data-priority="高"] { border-left: 4px solid #b42318; background: #fffafa; }
+    .instruction-record-topline { display: flex; align-items: center; justify-content: space-between; gap: 14px; }
+    .instruction-tags { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; }
+    .instruction-target, .instruction-priority, .instruction-status {
+      display: inline-flex;
+      align-items: center;
+      min-height: 24px;
+      padding: 3px 8px;
+      border-radius: 4px;
+      background: #eef2f6;
+      color: #475569;
+      font-size: 12px;
+      font-weight: 700;
+    }
+    .instruction-priority { background: #eaf2fc; color: #285ca8; }
+    .instruction-priority--高 { background: #fde8e7; color: #a51d18; }
+    .instruction-priority--低 { background: #eaf6ef; color: #17643d; }
+    .instruction-status--未対応 { background: #fff2d8; color: #8a5100; }
+    .instruction-status--対応中 { background: #eaf2fc; color: #285ca8; }
+    .instruction-status--完了 { background: #eaf6ef; color: #17643d; }
+    .instruction-created { color: var(--muted); font-size: 12px; }
+    .instruction-message { margin: 13px 0 8px; color: var(--ink); font-size: 16px; font-weight: 700; line-height: 1.65; white-space: pre-line; }
+    .instruction-details { display: flex; flex-wrap: wrap; gap: 7px 18px; color: var(--muted); font-size: 13px; }
+    .status-update-form { display: flex; align-items: center; justify-content: flex-end; gap: 9px; margin-top: 14px; padding-top: 13px; border-top: 1px solid var(--line); }
+    .status-update-form label { color: var(--muted); font-size: 13px; }
+    .status-update-form select { width: auto; min-width: 122px; min-height: 38px; padding-block: 6px; font-size: 13px; }
+    .instruction-list-section > .panel-heading { align-items: center; }
+
+    @media (max-width: 900px) {
+      .menu-toggle { display: grid; flex: 0 0 auto; }
+      .site-nav {
+        display: none;
+        position: absolute;
+        top: calc(100% + 8px);
+        right: max(20px, calc((100vw - 1390px) / 2));
+        min-width: 250px;
+        padding: 8px;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        background: #fff;
+        box-shadow: 0 8px 24px rgb(24 42 62 / 16%);
+      }
+      .site-nav.is-open { display: grid; }
+      .site-nav a, .site-nav .session-status { padding: 11px 12px; color: var(--ink); }
+      .site-nav a:hover, .site-nav a[aria-current="page"] { background: #f0f5fb; color: var(--blue); }
+      .site-nav a:focus-visible { outline-color: var(--blue); }
+      .site-nav .session-status { border-top: 1px solid var(--line); color: var(--muted); }
+    }
+
+    @media (max-width: 600px) {
+      .header-inner { width: calc(100% - 32px); height: 62px; }
+      .site-brand { font-size: 20px; }
+      .site-nav { right: 16px; }
+      main { width: calc(100% - 28px); margin: 20px auto 36px; }
+      .home-dashboard { gap: 18px; }
+      .home-panel { padding: 18px; }
+      .notice-board-link { font-size: 12px; }
+      .resident-notice { padding: 14px; }
+      .notice-message { font-size: 15px; }
+      .panel-heading { align-items: flex-start; margin-bottom: 16px; }
+      .panel-heading h2 { font-size: 17px; }
+      .auto-refresh { font-size: 11px; gap: 5px; }
+      .refresh-symbol { font-size: 17px; }
+      .map-toolbar { align-items: flex-start; }
+      .map-toolbar p { font-size: 12px; }
+      .locate-button { min-height: 38px; padding: 7px 9px; font-size: 13px; }
+      #shelterMap { height: 340px; }
+      .shelter-legend { gap: 9px 14px; }
+      .shelter-legend li { font-size: 12px; }
+      .weather-content { padding: 14px; }
+      .disaster-tools { gap: 7px; }
+      .disaster-toolbar { align-items: flex-start; flex-direction: column; gap: 8px; }
+      .disaster-filter-label { width: 100%; justify-content: space-between; }
+      .disaster-filter { flex: 1; }
+      .feed-status { text-align: left; }
+      .disaster-item { grid-template-columns: 34px minmax(0, 1fr); gap: 10px; padding: 12px; }
+      .disaster-icon { width: 32px; height: 32px; font-size: 16px; }
+      .disaster-copy h3 { font-size: 15px; }
+      .disaster-time { grid-column: 2; }
+      .board-page { gap: 16px; }
+      .board-page-heading h1 { font-size: 22px; }
+      .instruction-form { grid-template-columns: 1fr; gap: 15px; }
+      .instruction-field--wide { grid-column: auto; }
+      .instruction-form-actions { justify-content: stretch; }
+      .primary-action { width: 100%; }
+      .instruction-record { padding: 14px; }
+      .instruction-record-topline { align-items: flex-start; flex-direction: column; gap: 8px; }
+      .status-update-form { justify-content: flex-start; flex-wrap: wrap; }
+      .status-update-form label { width: 100%; }
+      .status-update-form select { flex: 1; }
+    }
+  </style>
 </head>
 <body>
-  <!-- ヘッダー -->
-  <h1>防災アプリ</h1>
-
-  <!-- ナビゲーション -->
-  <nav>
-    <a href="/">ホーム</a> |
-    <a href="/shelter_search">避難所検索</a> |
-    <a href="/shelter_register">避難所登録</a> |
-    <a href="/board">指示・発信ボード</a>
-    ｜
-    {% if session.logged_in %}
-      ログイン中{% if session.username %}（{{ session.username }}）{% endif %}
-      <a href="/logout">ログアウト</a>
-    {% else %}
-      未ログイン
-      <a href="/login">ログイン</a>
-    {% endif %}
-  </nav>
-  <hr>
+  <header class="site-header">
+    <div class="header-inner">
+      <a class="site-brand" href="{{ url_for('index') }}">防災アプリ</a>
+      <button class="menu-toggle" type="button" aria-label="メニューを開く" aria-expanded="false" aria-controls="siteNav">
+        <span></span><span></span><span></span>
+      </button>
+      <nav class="site-nav" id="siteNav" aria-label="メインメニュー">
+        <a href="{{ url_for('index') }}"{% if request.endpoint == 'index' %} aria-current="page"{% endif %}>ホーム</a>
+        <a href="{{ url_for('shelter_search') }}"{% if request.endpoint in ('shelter_search', 'search_results', 'all_shelters') %} aria-current="page"{% endif %}>避難所検索</a>
+        <a href="{{ url_for('shelter_register') }}"{% if request.endpoint == 'shelter_register' %} aria-current="page"{% endif %}>避難所登録</a>
+        <a href="{{ url_for('board') }}"{% if request.endpoint == 'board' %} aria-current="page"{% endif %}>指示・発信ボード</a>
+        {% if session.logged_in %}
+          <span class="session-status">ログイン中{% if session.username %}（{{ session.username }}）{% endif %}</span>
+          <a href="{{ url_for('logout') }}">ログアウト</a>
+        {% else %}
+          <span class="session-status">未ログイン</span>
+          <a href="{{ url_for('login') }}"{% if request.endpoint == 'login' %} aria-current="page"{% endif %}>ログイン</a>
+        {% endif %}
+      </nav>
+    </div>
+  </header>
 
   <main>
-    <!-- ここに子テンプレートの content が入る -->
     {% block content %}{% endblock %}
   </main>
+  <script>
+    const menuToggle = document.querySelector('.menu-toggle');
+    const siteNav = document.getElementById('siteNav');
+
+    function setMenuOpen(isOpen) {
+      siteNav.classList.toggle('is-open', isOpen);
+      menuToggle.setAttribute('aria-expanded', String(isOpen));
+      menuToggle.setAttribute('aria-label', isOpen ? 'メニューを閉じる' : 'メニューを開く');
+    }
+
+    menuToggle.addEventListener('click', function() {
+      setMenuOpen(menuToggle.getAttribute('aria-expanded') !== 'true');
+    });
+    siteNav.addEventListener('click', function(event) {
+      if (event.target.closest('a')) setMenuOpen(false);
+    });
+    document.addEventListener('click', function(event) {
+      if (menuToggle.getAttribute('aria-expanded') === 'true' &&
+          !siteNav.contains(event.target) && !menuToggle.contains(event.target)) {
+        setMenuOpen(false);
+      }
+    });
+    document.addEventListener('keydown', function(event) {
+      if (event.key === 'Escape' && menuToggle.getAttribute('aria-expanded') === 'true') {
+        setMenuOpen(false);
+        menuToggle.focus();
+      }
+    });
+  </script>
 </body>
 </html>

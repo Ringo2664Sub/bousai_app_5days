@@ -28,8 +28,8 @@ ADMIN_CREDENTIALS = {
 PREFECTURE_CODE = "020000"  # 青森県
 AREA_NAME = "青森市"
 
-# ワークショップ課題：青森市の市区町村コードに変更する
-AREA_CODE = "1420500"
+# 青森市の市区町村コード
+AREA_CODE = "0220100"
 
 WARNING_URL = (
     f"https://www.jma.go.jp/bosai/warning/data/r8/{PREFECTURE_CODE}.json"
@@ -100,7 +100,18 @@ def save_instructions():
         with open(INSTRUCTIONS_FILE, 'w', encoding='utf-8') as f:
             json.dump(instructions, f, ensure_ascii=False, indent=2)
     except Exception:
-        pass
+        return False
+    return True
+
+
+INSTRUCTION_STATUSES = ('未対応', '対応中', '完了')
+INSTRUCTION_PRIORITIES = ('高', '中', '低')
+INSTRUCTION_TARGETS = {
+    '住民': '住民向け',
+    '職員': '職員向け',
+    '道路管理課': '道路管理部署向け'
+}
+INSTRUCTION_DISTRICTS = ('市内全域', '青森地区', '浪岡地区')
 # ────────────────────────────────
 
 # ────────────────────────────────
@@ -144,13 +155,22 @@ def filter_shelters(district=None):
     return [s for s in shelters if not district or s.get('district') == district]
 
 
+def is_aomori_shelter(shelter):
+    """青森市に所在する避難所だけを選択肢に含める"""
+    district = str(shelter.get('district', ''))
+    location = ' '.join(
+        str(shelter.get(field, ''))
+        for field in ('address', 'address1', 'address_1', 'city', 'municipality', 'prefecture', 'location', 'area', 'district')
+    )
+    return district in ('青森', '青森地区', '浪岡', '浪岡地区') or '青森市' in location
+
+
 def parse_area_warnings(warning_data):
     """気象庁の新形式JSONから対象市区町村の発表・継続中の情報を抽出する"""
     if not isinstance(warning_data, list):
         raise ValueError("気象庁の警報・注意報データが新形式の配列ではありません")
 
-    warnings = []
-    seen_codes = set()
+    latest_by_code = {}
     report_datetimes = []
 
     for report in warning_data:
@@ -190,20 +210,40 @@ def parse_area_warnings(warning_data):
 
             status = kind.get("status", "")
             code = kind.get("code", "")
-            if status not in ("発表", "継続") or not code or code in seen_codes:
+            if not code:
                 continue
 
-            warnings.append({
-                "name": WARNING_CODES.get(
-                    code,
-                    f"不明な警報・注意報 (コード: {code})"
-                ),
+            name = WARNING_CODES.get(code, f"不明な警報・注意報 (コード: {code})")
+            report_datetime = report.get("reportDatetime", "")
+            current = latest_by_code.get(code)
+            if current and current["report_datetime"] >= report_datetime:
+                continue
+
+            if "特別警報" in name:
+                category = "特別警報"
+            elif "警報" in name:
+                category = "警報"
+            else:
+                category = "注意報"
+
+            latest_by_code[code] = {
+                "name": name,
                 "code": code,
-                "status": status
-            })
-            seen_codes.add(code)
+                "status": status,
+                "category": category,
+                "report_datetime": report_datetime,
+                "report_time": format_report_time(report_datetime)
+            }
 
     latest_report_datetime = max(report_datetimes, default="")
+    warnings = sorted(
+        (
+            warning for warning in latest_by_code.values()
+            if warning["status"] in ("発表", "継続")
+        ),
+        key=lambda warning: warning["report_datetime"],
+        reverse=True
+    )
     return warnings, latest_report_datetime
 
 
@@ -236,7 +276,16 @@ def get_weather_warnings():
 # トップページ：templates/index.html を返す（住民向け指示も表示する）
 @app.route('/')
 def index():
-    resident_notices = [i for i in instructions if i.get('target') == '住民']
+    resident_notices = []
+    for instruction in instructions:
+        if instruction.get('target') != '住民':
+            continue
+        notice = dict(instruction)
+        status = notice.get('status', '未対応')
+        notice['display_status'] = status if status in INSTRUCTION_STATUSES else ('完了' if status == '解除' else '未対応')
+        notice['priority'] = notice.get('priority') or '中'
+        resident_notices.append(notice)
+    resident_notices.sort(key=lambda instruction: str(instruction.get('created_at', '')), reverse=True)
     return render_template('index.html', resident_notices=resident_notices)
 
 # ログインページ
@@ -278,9 +327,29 @@ def logout():
     return redirect(url_for('index'))
 
 # 避難所登録ページ※user が避難所登録ページについて具体的に修正指示しない限り、このコードは正しいのでこのまま保持すること。
-@app.route('/shelter_register')
+@app.route('/shelter_register', methods=['GET', 'POST'])
 @login_required
 def shelter_register():
+    if request.method == 'POST':
+        name = request.form.get('name', '').strip()
+        if not name:
+            return render_template(
+                'shelter_register.html',
+                error=True,
+                message='避難所名を入力してください。'
+            )
+
+        shelter_id = max((shelter.get('id', 0) for shelter in shelters), default=0) + 1
+        shelters.append({'id': shelter_id, 'name': name})
+        with open(DATA_FILE, 'w', encoding='utf-8') as f:
+            json.dump(shelters, f, ensure_ascii=False, indent=2)
+
+        return render_template(
+            'shelter_register.html',
+            success=True,
+            message='避難所を登録しました。'
+        )
+
     return render_template('shelter_register.html')
 
 # 避難所検索ページ
@@ -295,11 +364,91 @@ def all_shelters():
 
 
 # 指示ボード：住民向けの指示を一覧で確認する
-@app.route('/board')
+@app.route('/board', methods=['GET', 'POST'])
 @login_required
 def board():
-    resident_instructions = [i for i in instructions if i.get('target') == '住民']
-    return render_template('board.html', instructions=resident_instructions)
+    if request.method == 'POST':
+        action = request.form.get('action', 'create')
+        if action == 'update_status':
+            instruction = next(
+                (item for item in instructions if str(item.get('id')) == request.form.get('instruction_id')),
+                None
+            )
+            status = request.form.get('status', '')
+            if instruction is None or status not in INSTRUCTION_STATUSES:
+                return redirect(url_for('board', notice='invalid'))
+
+            previous_status = instruction.get('status')
+            previous_updated_at = instruction.get('updated_at')
+            instruction['status'] = status
+            instruction['updated_at'] = get_japan_time()
+            if not save_instructions():
+                instruction['status'] = previous_status
+                instruction['updated_at'] = previous_updated_at
+                return redirect(url_for('board', notice='save_error'))
+            return redirect(url_for('board', notice='updated'))
+
+        content = request.form.get('content', '').strip()
+        target = request.form.get('target', '')
+        district = request.form.get('district', '')
+        shelter = request.form.get('shelter', '')
+        status = request.form.get('status', '')
+        priority = request.form.get('priority', '')
+        shelter_names = {
+            item.get('name', '') for item in shelters
+            if item.get('name') and is_aomori_shelter(item)
+        }
+        if (
+            not content
+            or target not in INSTRUCTION_TARGETS
+            or district not in INSTRUCTION_DISTRICTS
+            or (shelter and shelter not in shelter_names)
+            or status not in INSTRUCTION_STATUSES
+            or priority not in INSTRUCTION_PRIORITIES
+        ):
+            return redirect(url_for('board', notice='invalid'))
+
+        instruction_id = max(
+            (int(item.get('id', 0)) for item in instructions if str(item.get('id', 0)).isdigit()),
+            default=0
+        ) + 1
+        created_at = get_japan_time()
+        new_instruction = {
+            'id': instruction_id,
+            'target': target,
+            'content': content,
+            'district': district,
+            'shelter': shelter,
+            'status': status,
+            'priority': priority,
+            'created_at': created_at,
+            'updated_at': created_at
+        }
+        instructions.append(new_instruction)
+        if not save_instructions():
+            instructions.remove(new_instruction)
+            return redirect(url_for('board', notice='save_error'))
+        return redirect(url_for('board', notice='created'))
+
+    board_instructions = sorted(
+        instructions,
+        key=lambda instruction: str(instruction.get('created_at', '')),
+        reverse=True
+    )
+    return render_template(
+        'board.html',
+        instructions=board_instructions,
+        status_options=INSTRUCTION_STATUSES,
+        priority_options=INSTRUCTION_PRIORITIES,
+        target_options=INSTRUCTION_TARGETS,
+        district_options=INSTRUCTION_DISTRICTS,
+        shelter_options=sorted({
+            item.get('name', '') for item in shelters
+            if item.get('name') and is_aomori_shelter(item)
+        }),
+        target_labels={**INSTRUCTION_TARGETS, '防災課': '職員向け（防災課）'},
+        notice=request.args.get('notice', '')
+    )
 
 # 検索結果ページ：templates/search_results.html を返す
 @app.route('/search_results')

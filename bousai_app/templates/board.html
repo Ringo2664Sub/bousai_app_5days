@@ -3,23 +3,145 @@
 {% block title %}指示・発信ボード - 防災アプリ{% endblock %}
 
 {% block content %}
-<h2>発信ボード</h2>
-<p>住民向けの発信を登録・確認できます。</p>
+<div class="board-page">
+  <div class="board-page-heading">
+    <div>
+      <h1>指示・発信ボード</h1>
+      <p>宛先ごとの指示を登録し、対応状況を管理できます。</p>
+    </div>
+  </div>
 
-<!-- 発信一覧 -->
-<h3>発信一覧</h3>
-{% if instructions %}
-<table border="1" cellpadding="5">
-  <tr>
-    <th>内容</th>
-  </tr>
-  {% for inst in instructions %}
-  <tr>
-    <td>{{ inst.content }}{% if inst.shelter %}（避難先: {{ inst.shelter }}）{% endif %}</td>
-  </tr>
-  {% endfor %}
-</table>
-{% else %}
-<p>登録されている指示はありません。</p>
-{% endif %}
+  {% if notice == 'created' %}
+    <p class="board-feedback board-feedback--success" role="status">指示を登録しました。</p>
+  {% elif notice == 'updated' %}
+    <p class="board-feedback board-feedback--success" role="status">対応状況を更新しました。</p>
+  {% elif notice == 'invalid' %}
+    <p class="board-feedback board-feedback--error" role="alert">入力内容を確認してください。必須項目と選択肢を確認してください。</p>
+  {% elif notice == 'save_error' %}
+    <p class="board-feedback board-feedback--error" role="alert">保存に失敗しました。時間をおいて再度お試しください。</p>
+  {% endif %}
+
+  <section class="home-panel" aria-labelledby="instruction-form-title">
+    <div class="panel-heading board-section-heading">
+      <h2 id="instruction-form-title">指示を登録</h2>
+    </div>
+    <form class="instruction-form" method="post" action="{{ url_for('board') }}">
+      <input type="hidden" name="action" value="create">
+      <label class="instruction-field instruction-field--wide" for="instructionContent">
+        <span>指示内容 <span class="required-mark">必須</span></span>
+        <textarea id="instructionContent" name="content" rows="3" maxlength="1000" placeholder="例: 河川の水位が上昇しています。安全な場所へ避難してください。" required></textarea>
+      </label>
+
+      <label class="instruction-field" for="instructionTarget">
+        <span>宛先</span>
+        <select id="instructionTarget" name="target" required>
+          {% for target_value, target_label in target_options.items() %}
+            <option value="{{ target_value }}">{{ target_label }}</option>
+          {% endfor %}
+        </select>
+      </label>
+
+      <label class="instruction-field" for="instructionDistrict">
+        <span>対象地区</span>
+        <select id="instructionDistrict" name="district" required>
+          {% for district in district_options %}
+            <option value="{{ district }}">{{ district }}</option>
+          {% endfor %}
+        </select>
+      </label>
+
+      <label class="instruction-field" for="instructionShelter">
+        <span>避難先 <span class="field-note">任意</span></span>
+        <select id="instructionShelter" name="shelter">
+          <option value="">避難先を指定しない</option>
+          {% for shelter in shelter_options %}
+            <option value="{{ shelter }}">{{ shelter }}</option>
+          {% endfor %}
+        </select>
+        {% if not shelter_options %}
+          <span class="field-help-text">青森市の避難所情報が登録されると選択できます。</span>
+        {% endif %}
+      </label>
+
+      <label class="instruction-field" for="instructionStatus">
+        <span>対応状況</span>
+        <select id="instructionStatus" name="status" required>
+          {% for status in status_options %}
+            <option value="{{ status }}"{% if status == '未対応' %} selected{% endif %}>{{ status }}</option>
+          {% endfor %}
+        </select>
+      </label>
+
+      <fieldset class="instruction-field instruction-field--wide priority-field">
+        <legend>緊急度</legend>
+        <div class="priority-options">
+          {% for priority in priority_options %}
+            <label class="priority-option priority-option--{{ priority }}">
+              <input type="radio" name="priority" value="{{ priority }}"{% if priority == '中' %} checked{% endif %}>
+              <span>{{ priority }}</span>
+            </label>
+          {% endfor %}
+        </div>
+      </fieldset>
+
+      <div class="instruction-field registration-time-field">
+        <span>登録日時</span>
+        <p>登録時に自動記録されます</p>
+      </div>
+
+      <div class="instruction-form-actions">
+        <button class="primary-action" type="submit">指示を登録</button>
+      </div>
+    </form>
+  </section>
+
+  <section class="home-panel instruction-list-section" aria-labelledby="instruction-list-title">
+    <div class="panel-heading board-section-heading">
+      <h2 id="instruction-list-title">登録済みの指示</h2>
+      <span class="notice-count">{{ instructions|length }}</span>
+    </div>
+    {% if instructions %}
+      <div class="instruction-list">
+        {% for inst in instructions %}
+          {% set priority = inst.get('priority') or '中' %}
+          {% set priority_key = priority|string|lower %}
+          {% set normalized_status = '完了' if inst.get('status') == '解除' else inst.get('status', '未対応') %}
+          <article class="instruction-record" data-priority="{{ priority_key }}">
+            <div class="instruction-record-topline">
+              <div class="instruction-tags">
+                <span class="instruction-target">{{ target_labels.get(inst.get('target'), inst.get('target', '宛先未設定')) }}</span>
+                <span class="instruction-priority instruction-priority--{{ priority_key }}">緊急度 {{ priority }}</span>
+                <span class="instruction-status instruction-status--{{ normalized_status }}">{{ normalized_status }}</span>
+              </div>
+              <time class="instruction-created">登録 {{ inst.get('created_at', '日時未登録') }}</time>
+            </div>
+
+            <p class="instruction-message">{{ inst.get('content', '内容未登録') }}</p>
+            <div class="instruction-details">
+              <span>対象地区: {{ inst.get('district') or '市内全域' }}</span>
+              {% if inst.get('shelter') %}<span>避難先: {{ inst.shelter }}</span>{% endif %}
+              {% if inst.get('updated_at') and inst.get('updated_at') != inst.get('created_at') %}
+                <span>最終更新: {{ inst.updated_at }}</span>
+              {% endif %}
+            </div>
+
+            <form class="status-update-form" method="post" action="{{ url_for('board') }}">
+              <input type="hidden" name="action" value="update_status">
+              <input type="hidden" name="instruction_id" value="{{ inst.id }}">
+              <label for="status-{{ inst.id }}">対応状況</label>
+              <select id="status-{{ inst.id }}" name="status">
+                {% for status in status_options %}
+                  <option value="{{ status }}"{% if normalized_status == status %} selected{% endif %}>{{ status }}</option>
+                {% endfor %}
+              </select>
+              <button class="secondary-action" type="submit">状況を更新</button>
+            </form>
+          </article>
+        {% endfor %}
+      </div>
+    {% else %}
+      <div class="notice-empty" role="status"><p>登録されている指示はありません。</p></div>
+    {% endif %}
+  </section>
+</div>
 {% endblock %}
